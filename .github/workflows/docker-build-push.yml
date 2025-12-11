@@ -13,15 +13,22 @@ jobs:
       matrix:
         os: [ ubuntu-latest, windows-latest, macos-latest ]
     env:
-      DOCKER_REPO: ${{ secrets.DOCKERHUB_REPO }}
+      DOCKER_REPO: ${{ secrets.DOCKERHUB_REPO || 'nagucc/it-assets-management-api' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Configure npm for private packages
+        run: |
+          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          npm config set @nagucc:registry https://npm.pkg.github.com
+        if: github.event_name != 'pull_request'
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
@@ -40,6 +47,17 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      - name: Create .npmrc for private packages
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
+          echo "@nagucc:registry=https://npm.pkg.github.com/" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+          NPMRC_CONTENT=$(cat .npmrc)
+          echo "NPMRC_CONTENT<<EOF"
+          echo "$NPMRC_CONTENT"
+          echo "EOF" >> $GITHUB_ENV
+        if: github.event_name != 'pull_request'
+
       - name: Build Docker image
         id: build
         uses: docker/build-push-action@v6
@@ -51,6 +69,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            NPMRC_CONTENT=${{ env.NPMRC_CONTENT }}
 
       - name: Run Docker image test
         if: matrix.os == 'ubuntu-latest'
@@ -70,6 +90,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            NPMRC_CONTENT=${{ env.NPMRC_CONTENT }}
+
+      - name: Clean up .npmrc
+        run: rm -f .npmrc
+        if: github.event_name != 'pull_request'
 
       - name: Clean up
         if: always()

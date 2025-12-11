@@ -4,6 +4,10 @@ FROM node:20.18.0-alpine3.20
 # 设置工作目录
 WORKDIR /app
 
+# 使用npmrc secret if available
+ARG NPMRC_CONTENT
+RUN if [ -n "$NPMRC_CONTENT" ]; then echo "$NPMRC_CONTENT" > /root/.npmrc; fi
+
 # 复制package.json和package-lock.json
 COPY package*.json ./
 
