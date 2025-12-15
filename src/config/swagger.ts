@@ -16,6 +16,14 @@ const swaggerOptions = {
       },
     ],
     components: {
+      securitySchemes: {
+        BearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Enter JWT token in the format: Bearer <token>'
+        }
+      },
       schemas: {
         Domain: {
           type: 'object',
@@ -205,6 +213,11 @@ const swaggerOptions = {
         },
       },
     },
+    security: [
+      {
+        BearerAuth: []
+      }
+    ],
   },
   apis: ['./src/routes/domain.routes.ts', './src/controllers/domain.controller.ts']
 };

@@ -57,6 +57,18 @@ const startServer = async () => {
       logger.info(`Server is running on http://${HOST}:${PORT}`);
       logger.info(`Swagger documentation available at http://${HOST}:${PORT}/api-docs`);
     });
+    
+    // 确保服务器对象正确创建
+    if (!server) {
+      throw new Error('Failed to create server instance');
+    }
+    
+    // 监听服务器错误
+    server.on('error', (error: Error) => {
+      logger.error(`Server error: ${error.message}`);
+      process.exit(1);
+    });
+    
     return server;
   } catch (error) {
     logger.error(`Failed to start server: ${(error as Error).message}`);
@@ -83,9 +95,24 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// 监听未处理的Promise拒绝
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// 监听未捕获的异常
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception thrown:', error);
+  process.exit(1);
+});
+
 // 仅在直接运行时启动服务器，测试环境下由测试框架控制
 if (require.main === module) {
-  startServer();
+  startServer().catch((error) => {
+    logger.error(`Failed to start server: ${error.message}`);
+    process.exit(1);
+  });
 }
 
 export { app, startServer };

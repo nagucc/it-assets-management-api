@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { domainService } from '../services/domain.service';
 import Joi from 'joi';
 import { validate } from '../middleware/validation';
+import { permissionMiddleware, filterDomainsByAdmin } from '../middleware/permission.middleware';
 import { DnsRecordType } from 'it-assets-management-models';
 
 /**
@@ -77,6 +78,7 @@ export class DomainController {
    */
   public createDomain = [
     validate({ body: domainSchema }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const domain = await domainService.createDomain(req.body);
@@ -118,19 +120,28 @@ export class DomainController {
    *       500:
    *         description: 服务器错误
    */
-  public getAllDomains = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const domains = await domainService.getAllDomains();
-      res.status(200).json({
-        status: 200,
-        message: 'Domains retrieved successfully',
-        data: domains,
-        count: domains.length,
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
+  public getAllDomains = [
+    permissionMiddleware,
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        let domains = await domainService.getAllDomains();
+        
+        // 如果是普通用户，过滤掉不是自己管理的域名
+        if ((req as any).filterByAdmin && req.user) {
+          domains = filterDomainsByAdmin(domains, req.user.username);
+        }
+        
+        res.status(200).json({
+          status: 200,
+          message: 'Domains retrieved successfully',
+          data: domains,
+          count: domains.length,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  ];
 
   /**
    * @swagger
@@ -166,6 +177,7 @@ export class DomainController {
    */
   public getDomainById = [
     validate({ params: domainIdSchema }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const domain = await domainService.getDomainById(req.params.id);
@@ -228,6 +240,7 @@ export class DomainController {
    */
   public updateDomain = [
     validate({ params: domainIdSchema, body: domainUpdateSchema }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const domain = await domainService.updateDomain(req.params.id, req.body);
@@ -274,6 +287,7 @@ export class DomainController {
    */
   public deleteDomain = [
     validate({ params: domainIdSchema }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         await domainService.deleteDomain(req.params.id);
@@ -338,6 +352,7 @@ export class DomainController {
         enabled: Joi.boolean().required(),
       }),
     }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const domain = await domainService.updateDomainStatus(req.params.id, req.body.enabled);
@@ -388,9 +403,16 @@ export class DomainController {
    */
   public getDomainsByType = [
     validate({ params: Joi.object({ recordType: Joi.string().required() }) }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const domains = await domainService.getDomainsByType(req.params.recordType);
+        let domains = await domainService.getDomainsByType(req.params.recordType);
+        
+        // 如果是普通用户，过滤掉不是自己管理的域名
+        if ((req as any).filterByAdmin && req.user) {
+          domains = filterDomainsByAdmin(domains, req.user.username);
+        }
+        
         res.status(200).json({
           status: 200,
           message: 'Domains retrieved by type successfully',
@@ -440,10 +462,17 @@ export class DomainController {
    */
   public getDomainsByStatus = [
     validate({ params: Joi.object({ status: Joi.string().required() }) }),
+    permissionMiddleware,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const status = req.params.status === 'enabled' ? true : false;
-        const domains = await domainService.getDomainsByStatus(status);
+        let domains = await domainService.getDomainsByStatus(status);
+        
+        // 如果是普通用户，过滤掉不是自己管理的域名
+        if ((req as any).filterByAdmin && req.user) {
+          domains = filterDomainsByAdmin(domains, req.user.username);
+        }
+        
         res.status(200).json({
           status: 200,
           message: 'Domains retrieved by status successfully',

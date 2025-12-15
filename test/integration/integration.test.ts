@@ -1,7 +1,7 @@
 import request from 'supertest';
-import { app } from '../app';
-import { storageService } from '../services/storage.service';
-import { generateTestToken } from './test-helpers';
+import { app } from '../../src/app';
+import { storageService } from '../../src/services/storage.service';
+import { generateTestToken } from '../utils/test-helpers';
 
 // 测试前初始化
 beforeAll(async () => {

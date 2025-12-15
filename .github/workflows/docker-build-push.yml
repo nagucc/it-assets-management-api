@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [ ubuntu-latest ]
     env:
       DOCKER_REPO: ${{ secrets.DOCKERHUB_REPO || 'nagucc/it-assets-management-api' }}
     steps:
