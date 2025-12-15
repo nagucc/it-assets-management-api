@@ -52,10 +52,6 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
           echo "@nagucc:registry=https://npm.pkg.github.com/" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-          NPMRC_CONTENT=$(cat .npmrc)
-          echo "NPMRC_CONTENT<<EOF"
-          echo "$NPMRC_CONTENT"
-          echo "EOF" >> $GITHUB_ENV
         if: github.event_name != 'pull_request'
 
       - name: Build Docker image
@@ -69,8 +65,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            NPMRC_CONTENT=${{ env.NPMRC_CONTENT }}
+          secrets: |
+            NPMRC_CONTENT=$(cat .npmrc)
 
       - name: Run Docker image test
         if: matrix.os == 'ubuntu-latest'
@@ -90,8 +86,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            NPMRC_CONTENT=${{ env.NPMRC_CONTENT }}
+          secrets: |
+            NPMRC_CONTENT=$(cat .npmrc)
 
       - name: Clean up .npmrc
         run: rm -f .npmrc

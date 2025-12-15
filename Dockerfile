@@ -4,15 +4,15 @@ FROM node:20.18.0-alpine3.20
 # 设置工作目录
 WORKDIR /app
 
-# 使用npmrc secret if available
-ARG NPMRC_CONTENT
-RUN if [ -n "$NPMRC_CONTENT" ]; then echo "$NPMRC_CONTENT" > /root/.npmrc; fi
-
 # 复制package.json和package-lock.json
 COPY package*.json ./
 
 # 安装依赖（包括开发依赖，因为需要构建项目）
-RUN npm ci
+RUN --mount=type=secret,id=NPMRC_CONTENT,mode=0644,required=false \
+    if [ -f /run/secrets/NPMRC_CONTENT ]; then \
+        cp /run/secrets/NPMRC_CONTENT /root/.npmrc; \
+    fi && \
+    npm ci
 
 # 复制源代码
 COPY . .
@@ -21,7 +21,11 @@ COPY . .
 RUN npm run build
 
 # 安装生产依赖
-RUN npm ci --only=production
+RUN --mount=type=secret,id=NPMRC_CONTENT,mode=0644,required=false \
+    if [ -f /run/secrets/NPMRC_CONTENT ]; then \
+        cp /run/secrets/NPMRC_CONTENT /root/.npmrc; \
+    fi && \
+    npm ci --only=production
 
 # 暴露API端口
 EXPOSE 3000
