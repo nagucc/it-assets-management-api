@@ -71,7 +71,9 @@ jobs:
       - name: Run Docker image test
         if: matrix.os == 'ubuntu-latest'
         run: |
-          docker run --rm -d --name test-container -p 3000:3000 ${{ env.DOCKER_REPO }}:${{ steps.meta.outputs.tags }}
+          # Get the first tag from the list of tags
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          docker run --rm -d --name test-container -p 3000:3000 $IMAGE_TAG
           sleep 5
           curl -f http://localhost:3000/health || exit 1
           docker stop test-container
