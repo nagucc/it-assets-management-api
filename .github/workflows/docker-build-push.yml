@@ -8,10 +8,7 @@ on:
 
 jobs:
   build-push:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ ubuntu-latest ]
+    runs-on: ubuntu-latest
     env:
       DOCKER_REPO: ${{ secrets.DOCKERHUB_REPO || 'nagucc/it-assets-management-api' }}
     steps:
@@ -43,9 +40,13 @@ jobs:
         with:
           images: ${{ env.DOCKER_REPO }}
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}},enable={{is_tag}}
+            type=semver,pattern={{major}}.{{minor}},enable={{is_tag}}
+            type=semver,pattern={{major}},enable={{is_tag}}
             type=sha,format=short
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch,format=short
+            type=ref,event=pr,format=short
 
       - name: Create .npmrc for private packages
         run: |
@@ -61,6 +62,7 @@ jobs:
           context: .
           push: false
           load: true
+          platforms: linux/amd64,linux/arm64,windows/amd64,windows/arm64,linux/ppc64le,linux/s390x
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -69,7 +71,6 @@ jobs:
             NPMRC_CONTENT=$(cat .npmrc)
 
       - name: Run Docker image test
-        if: matrix.os == 'ubuntu-latest'
         run: |
           # Get the first tag from the list of tags
           IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
@@ -78,12 +79,26 @@ jobs:
           curl -f http://localhost:3000/health || exit 1
           docker stop test-container
 
+      - name: Run Trivy security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ steps.meta.outputs.tags }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+
       - name: Push Docker image
-        if: github.event_name != 'pull_request' && matrix.os == 'ubuntu-latest'
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          platforms: linux/amd64,linux/arm64,windows/amd64,windows/arm64,linux/ppc64le,linux/s390x
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -100,19 +115,33 @@ jobs:
         run: |
           docker system prune -f || true
 
-      - name: Generate build report
+      - name: Generate detailed build report
         if: always()
         run: |
-          echo "Build Report for ${{ github.sha }}"
+          echo "📋 Build Report for ${{ github.sha }}"
           echo "===================================="
-          echo "Build Status: ${{ job.status }}"
-          echo "OS: ${{ matrix.os }}"
-          echo "Image Tags: ${{ steps.meta.outputs.tags }}"
-          echo "Build Time: $(date)"
+          echo "✅ Build Status: ${{ job.status }}"
+          echo "🔖 Event: ${{ github.event_name }}"
+          echo "🌿 Branch/Tag: ${{ github.ref_name }}"
+          echo "📦 Image Repository: ${{ env.DOCKER_REPO }}"
+          echo "🏷️  Image Tags: ${{ steps.meta.outputs.tags }}"
+          echo "🔍 Security Scan: Completed"
+          echo "⏱️  Build Time: $(date)"
+          echo "🌐 GitHub Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo "===================================="
 
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "❌ Build failed! Check logs for details."
-          echo "GitHub Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Set up Slack notification
+        if: always()
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_COLOR: ${{ job.status == 'success' && 'good' || job.status == 'failure' && 'danger' || 'warning' }}
+          SLACK_TITLE: "Docker Build ${{ job.status == 'success' && '✅ Success' || job.status == 'failure' && '❌ Failed' || '⚠️  Warning' }}"
+          SLACK_MESSAGE: "Repository: ${{ github.repository }}
+Branch: ${{ github.ref_name }}
+Image: ${{ env.DOCKER_REPO }}
+Tags: ${{ steps.meta.outputs.tags }}
+Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SLACK_USERNAME: "GitHub Actions"
+          SLACK_ICON: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+        continue-on-error: true
