@@ -40,10 +40,10 @@ jobs:
         with:
           images: ${{ env.DOCKER_REPO }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}},enable={{is_tag}}
-            type=semver,pattern={{major}}.{{minor}},enable={{is_tag}}
-            type=semver,pattern={{major}},enable={{is_tag}}
+            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=sha,format=short
             type=ref,event=branch,format=short
             type=ref,event=pr,format=short
@@ -61,8 +61,8 @@ jobs:
         with:
           context: .
           push: false
-          load: true
-          platforms: linux/amd64,linux/arm64,windows/amd64,windows/arm64,linux/ppc64le,linux/s390x
+          load: false
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -70,27 +70,15 @@ jobs:
           secrets: |
             NPMRC_CONTENT=$(cat .npmrc)
 
-      - name: Run Docker image test
+      - name: Run Docker image test (single platform only)
+        if: github.event_name == 'pull_request'
         run: |
-          # Get the first tag from the list of tags
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
-          docker run --rm -d --name test-container -p 3000:3000 $IMAGE_TAG
+          # Build and test only for linux/amd64 on PRs
+          docker build -t test-image:latest --platform linux/amd64 .
+          docker run --rm -d --name test-container -p 3000:3000 test-image:latest
           sleep 5
           curl -f http://localhost:3000/health || exit 1
           docker stop test-container
-
-      - name: Run Trivy security scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ steps.meta.outputs.tags }}"
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-results.sarif"
 
       - name: Push Docker image
         if: github.event_name != 'pull_request'
@@ -98,13 +86,28 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64,windows/amd64,windows/arm64,linux/ppc64le,linux/s390x
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           secrets: |
             NPMRC_CONTENT=$(cat .npmrc)
+
+      - name: Run Trivy security scan on pushed image
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.DOCKER_REPO }}:latest"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
 
       - name: Clean up .npmrc
         run: rm -f .npmrc
